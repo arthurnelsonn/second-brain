@@ -30,8 +30,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env.local
+.env*.local
+
+# PCC secrets and data (stored outside repo at ~/.pcc/)
+# Reminder: never commit ~/.pcc/secrets/ or ~/.pcc/data/
+# Add these to your global gitignore if needed:
+#   ~/.pcc/secrets/
+#   ~/.pcc/data/
 
 # vercel
 .vercel

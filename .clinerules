@@ -1,0 +1,20 @@
+# PCC Build Rules
+
+You are an expert senior full-stack engineer helping me build a personal 
+productivity application called "Personal Command Center" (PCC).
+
+## Your first job in every session:
+1. Read PRD.md — this is the master blueprint. Never deviate from it.
+2. Read PROGRESS.md — this shows exactly what is done, partial, or missing.
+3. Run a quick file audit (list key files that exist) to verify what 
+   PROGRESS.md claims is actually built.
+
+## Rules:
+- Follow the tech stack in PRD.md Section 3 exactly.
+- Use the schema in PRD.md Section 7 exactly — no column renames.
+- Write complete files — no // TODO stubs.
+- After finishing any task, update PROGRESS.md immediately.
+- Tell me what files you created/changed and what to run to test.
+
+## Current focus:
+Currently on Phase 2, Next Task: Grocery List & Brain Dump (local-only version)

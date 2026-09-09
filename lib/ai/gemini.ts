@@ -1,13 +1,22 @@
-// Gemini client — initialized lazily to avoid import errors when API key is not yet set
+import 'server-only';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import type { GenerativeModel } from '@google/generative-ai';
 
-let _client: GoogleGenerativeAI | null = null;
+let _pro: GenerativeModel | null = null;
+let _flash: GenerativeModel | null = null;
 
-export function getGeminiClient(): GoogleGenerativeAI {
-  if (!_client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
-    _client = new GoogleGenerativeAI(apiKey);
-  }
-  return _client;
+function client(): GoogleGenerativeAI {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error('GEMINI_API_KEY is not set');
+  return new GoogleGenerativeAI(key);
+}
+
+export function getGeminiPro(): GenerativeModel {
+  if (!_pro) _pro = client().getGenerativeModel({ model: 'gemini-3.6-flash' });
+  return _pro;
+}
+
+export function getGeminiFlash(): GenerativeModel {
+  if (!_flash) _flash = client().getGenerativeModel({ model: 'gemini-3.6-flash' });
+  return _flash;
 }

@@ -75,6 +75,7 @@ export const morningPlans = sqliteTable('morning_plans', {
   primary_focus:  text('primary_focus'),
   reflection:     text('reflection'),
   skipped:        integer('skipped', { mode: 'boolean' }).default(false),
+  skipped_until:  integer('skipped_until', { mode: 'timestamp' }),
   ai_suggestions: text('ai_suggestions'),
   email_brief:    text('email_brief'),
   completed_at:   integer('completed_at', { mode: 'timestamp' }),

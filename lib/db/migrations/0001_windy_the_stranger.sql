@@ -1,0 +1,1 @@
+ALTER TABLE `morning_plans` ADD `skipped_until` integer;

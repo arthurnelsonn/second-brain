@@ -305,6 +305,10 @@ Since this is a single-user application, there is one persona:
 
 > A capture-first, AI-powered ideation space.
 
+> **⚠️ Implementation Note (added during build):** Two bugs remain unresolved as of last session:
+> 1. **History list empty on refresh** — `brain_dumps` rows are saved to SQLite but the history tab shows empty after a page refresh. Investigate the `/api/brainstorm/history` route and the autosave upsert logic (stale closure on `sessionId` may be creating duplicate rows instead of updating).
+> 2. **Saved workspace note not visible** — `POST /api/notes` succeeds (201) but the note does not appear in the Brainstorm project in `/workspace`. Likely cause: note `content` is saved as raw Markdown but `NotesList.tsx` and `NoteEditor.tsx` expect Tiptap JSON format. Fix by either converting Markdown to Tiptap JSON before saving, or adding a plain-text fallback in the editor.
+
 **User Stories:**
 
 | ID | Story | Acceptance Criteria |
