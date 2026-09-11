@@ -14,8 +14,8 @@ interface Props {
 function plainText(content: string | null): string {
   if (!content) return '';
   try {
-    // Tiptap JSON → extract text
-    const doc = JSON.parse(content) as { content?: Array<{ content?: Array<{ text?: string }> }> };
+    const doc = JSON.parse(content) as { type?: string; content?: Array<{ content?: Array<{ text?: string }> }> };
+    if (doc.type !== 'doc') return content.slice(0, 100);
     return doc.content
       ?.flatMap(b => b.content?.map(n => n.text ?? '') ?? [])
       .join(' ')

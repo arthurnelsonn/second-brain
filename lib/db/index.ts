@@ -16,6 +16,15 @@ sqlite.pragma('foreign_keys = ON');
 
 export const db = drizzle(sqlite, { schema });
 
-// Run migrations eagerly on first import so all routes have a ready DB
+// Run Drizzle migrations eagerly on first import
 const MIGRATIONS_DIR = path.join(process.cwd(), 'lib', 'db', 'migrations');
 migrate(db, { migrationsFolder: MIGRATIONS_DIR });
+
+// Seed default projects if table is empty (inlined to avoid circular import with migrate.ts)
+const projectCount = sqlite.prepare('SELECT COUNT(*) as c FROM projects').get() as { c: number };
+if (projectCount.c === 0) {
+  sqlite.prepare(`INSERT INTO projects (name, color, icon, sort_order) VALUES
+    ('Brainstorm', '#7C3AED', 'Lightbulb', 0),
+    ('Work',       '#2563EB', 'Briefcase', 1),
+    ('Personal',   '#16A34A', 'User',      2)`).run();
+}

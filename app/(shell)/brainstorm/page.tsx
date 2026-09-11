@@ -25,39 +25,69 @@ export default function BrainstormPage() {
   const [savedToWs, setSavedToWs] = useState(false);
   const [history, setHistory] = useState<BrainDump[]>([]);
   const [toast, setToast] = useState('');
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Refs so async callbacks always read latest values — no stale closures
   const sessionIdRef = useRef<number | null>(null);
+  const contentRef = useRef('');
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep ref in sync so async callbacks always have latest value
   useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
-
-  // Auto-save every 5s
-  useEffect(() => {
-    if (!content.trim()) return;
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(async () => {
-      const sid = sessionIdRef.current;
-      const res = await fetch('/api/brainstorm/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sid ?? undefined, content }),
-      });
-      const data = await res.json() as BrainDump;
-      if (!sid) setSessionId(data.id);
-    }, 5000);
-    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current); };
-  }, [content]);
+  useEffect(() => { contentRef.current = content; }, [content]);
 
   const loadHistory = useCallback(async () => {
     const res = await fetch('/api/brainstorm/history');
-    setHistory(await res.json() as BrainDump[]);
+    if (res.ok) setHistory(await res.json() as BrainDump[]);
   }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
   useEffect(() => { if (tab === 'history') loadHistory(); }, [tab, loadHistory]);
 
+  // Reliable autosave using refs — no dependency on state values
+  function scheduleAutosave() {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      const text = contentRef.current.trim();
+      if (!text) return;
+      const sid = sessionIdRef.current;
+      const res = await fetch('/api/brainstorm/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sid ?? undefined, content: text }),
+      });
+      if (res.ok) {
+        const data = await res.json() as BrainDump;
+        if (!sid) {
+          sessionIdRef.current = data.id;
+          setSessionId(data.id);
+        }
+      }
+    }, 5000);
+  }
+
+  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setContent(e.target.value);
+    scheduleAutosave();
+  }
+
   async function runMode(mode: Mode) {
-    if (!content.trim() || streaming) return;
+    if (!contentRef.current.trim() || streaming) return;
+
+    // Ensure session exists before streaming
+    let sid = sessionIdRef.current;
+    if (!sid) {
+      const r = await fetch('/api/brainstorm/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: contentRef.current }),
+      });
+      if (r.ok) {
+        const data = await r.json() as BrainDump;
+        sid = data.id;
+        sessionIdRef.current = sid;
+        setSessionId(sid);
+      }
+    }
+
     setActiveMode(mode);
     setStreaming(true);
     setAiText('');
@@ -67,7 +97,7 @@ export default function BrainstormPage() {
     const res = await fetch('/api/ai/brainstorm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, mode }),
+      body: JSON.stringify({ content: contentRef.current, mode }),
     });
 
     if (!res.ok || !res.body) {
@@ -91,22 +121,14 @@ export default function BrainstormPage() {
     setStreaming(false);
     setDone(true);
 
-    const sid = sessionIdRef.current;
-    if (sid) {
-      await fetch('/api/brainstorm/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sid, content, mode, ai_response: full }),
-      });
-    } else {
-      const r = await fetch('/api/brainstorm/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, mode, ai_response: full }),
-      });
-      const data = await r.json() as BrainDump;
-      setSessionId(data.id);
-    }
+    // Persist ai_response — sid is guaranteed to exist now
+    await fetch('/api/brainstorm/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: sessionIdRef.current, content: contentRef.current, mode, ai_response: full }),
+    });
+
+    loadHistory();
   }
 
   async function copyResponse() {
@@ -135,15 +157,17 @@ export default function BrainstormPage() {
       }
       const note = await noteRes.json() as { id: number };
 
+      // Ensure session exists
       let sid = sessionIdRef.current;
       if (!sid) {
         const r = await fetch('/api/brainstorm/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content, mode: activeMode ?? undefined, ai_response: aiText }),
+          body: JSON.stringify({ content: contentRef.current, mode: activeMode ?? undefined, ai_response: aiText }),
         });
         const dump = await r.json() as BrainDump;
         sid = dump.id;
+        sessionIdRef.current = sid;
         setSessionId(sid);
       }
 
@@ -152,7 +176,7 @@ export default function BrainstormPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: sid,
-          content,
+          content: contentRef.current,
           mode: activeMode ?? undefined,
           ai_response: aiText,
           saved_note_id: note.id,
@@ -173,7 +197,9 @@ export default function BrainstormPage() {
 
   function restoreSession(dump: BrainDump) {
     setContent(dump.content);
+    contentRef.current = dump.content;
     setSessionId(dump.id);
+    sessionIdRef.current = dump.id;
     setAiText(dump.ai_response ?? '');
     setDone(!!dump.ai_response);
     setActiveMode((dump.mode as Mode) ?? null);
@@ -182,8 +208,11 @@ export default function BrainstormPage() {
   }
 
   function newSession() {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     setContent('');
+    contentRef.current = '';
     setSessionId(null);
+    sessionIdRef.current = null;
     setAiText('');
     setDone(false);
     setActiveMode(null);
@@ -221,7 +250,7 @@ export default function BrainstormPage() {
           <div className="flex flex-col w-1/2 border-r border-zinc-800 p-4 gap-3">
             <textarea
               value={content}
-              onChange={e => setContent(e.target.value)}
+              onChange={handleContentChange}
               placeholder={"Dump everything on your mind here.\nDon't edit. Don't organize. Just write."}
               className="flex-1 bg-transparent text-white font-mono text-base leading-relaxed resize-none focus:outline-none placeholder-zinc-600"
             />

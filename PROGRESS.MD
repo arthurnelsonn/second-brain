@@ -3,8 +3,8 @@
 ## Status
 - [x] Phase 0: Foundation ✅
 - [x] Phase 1: Core Shell & Navigation ✅
-- [ ] Phase 2: Core Life Modules
-- [ ] Phase 3: AI Integration
+- [x] Phase 2: AI Integration ✅
+- [ ] Phase 3: Calendar Integration
 - [ ] Phase 4: Calendar Integration
 - [ ] Phase 5: Task Integration & Time-Blocking
 - [ ] Phase 6: Email Integration
@@ -127,6 +127,18 @@
 
 ---
 
+## Phase 2: AI Integration ✅ COMPLETE
+
+### Completed Tasks
+- [x] `app/morning/page.tsx` — "Get AI Suggestions" button in Step 1; passes current `focus` value to `/api/ai/morning`; renders suggestions inline with ReactMarkdown in indigo card
+- [x] `app/api/ai/note-qa/route.ts` — streaming POST; sends note plain-text + question to Gemini Flash via `streamGemini` + `createStreamResponse`
+- [x] `components/workspace/NoteEditor.tsx` — "Ask AI" button opens 320px right drawer; streaming Q&A with ReactMarkdown render; resets on note change
+- [x] `app/api/ai/grocery-extract/route.ts` — non-streaming POST; strips markdown fences from response; returns `{ ingredients: [{name, quantity, unit, category}] }`
+- [x] `app/(shell)/grocery/page.tsx` — "Extract Recipe" FAB opens modal; paste recipe → Extract Ingredients → confirmation list with per-item checkboxes → Add Selected to list
+- [x] TypeScript: 0 errors
+
+---
+
 ## Phase 3: AI Infrastructure ✅ COMPLETE
 
 ### Completed Tasks
@@ -165,7 +177,7 @@
 - [x] `react-markdown` installed
 - [x] TypeScript: 0 errors
 
-### ⚠️ Known Bugs — NOT YET FIXED (stopped here)
-- [ ] **History disappears on refresh** — `brain_dumps` records ARE being saved to SQLite correctly, but on page load the history list shows empty. The `loadHistory()` fetch to `/api/brainstorm/history` is firing but returning stale/empty data. Suspected cause: the autosave 5s timer uses a stale closure on `sessionId` — the first save creates a new record but subsequent saves may be creating duplicates instead of updating, and the history query may be filtering them out. Needs investigation of the save/upsert logic and whether `is_quick_capture` filter is too aggressive.
-- [ ] **"Save to Workspace" note disappears after refresh** — The note IS created in the `notes` table (POST `/api/notes` returns 201 with a valid id), but when navigating to `/workspace` and selecting the Brainstorm project, the note does not appear. Suspected cause: the note `content` field is being saved as a raw Markdown string but `NotesList.tsx` tries to parse it as Tiptap JSON (`JSON.parse(content)`), which fails silently and shows an empty preview. The note may actually be there but invisible. Check by querying the DB directly or adding a raw content fallback in `NoteEditor.tsx`.
-- [ ] **Hydration warning on `/workspace`** — `formatDistanceToNow` in `NotesList.tsx` produces different output on server vs client. Added `suppressHydrationWarning` as a workaround but the underlying cause (SSR + relative time) should be fixed properly by only rendering the timestamp on the client side.
+### ⚠️ Known Bugs — ALL FIXED
+- [x] **History disappears on refresh** — Root cause was stale closure: autosave timer captured `sessionId` state at creation time (always `null`). Fixed by using `contentRef` and `sessionIdRef` that stay in sync via `useEffect`, and by ensuring a session is created before streaming starts in `runMode()`.
+- [x] **"Save to Workspace" note disappears after refresh** — Two fixes: (1) save flow now guarantees a session exists before saving the note, (2) `NoteEditor` and `NotesList` now check `parsed.type === 'doc'` before treating content as Tiptap JSON — plain Markdown from brainstorm saves now renders correctly as text.
+- [x] **Hydration warning on `/workspace`** — `plainText()` in `NotesList` now validates Tiptap doc type before parsing. `suppressHydrationWarning` retained on relative timestamp.

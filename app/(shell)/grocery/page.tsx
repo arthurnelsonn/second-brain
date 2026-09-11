@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Pencil, X, Clipboard, Trash2,
-  LayoutList, Store, Check,
+  LayoutList, Store, Check, ChefHat, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GroceryItem } from '@/types';
@@ -33,6 +33,13 @@ const CATEGORY_COLORS: Record<string, string> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type GroupMode = 'category' | 'store';
+
+interface ExtractedIngredient {
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  category: string;
+}
 
 interface ItemFormState {
   name: string;
@@ -293,8 +300,16 @@ export default function GroceryPage() {
     if (stored) setGroupMode(stored);
   }, []);
 
-  const [editingItem, setEditingItem] = useState<GroceryItem | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [editingItem, setEditingItem]     = useState<GroceryItem | null>(null);
+  const [toast, setToast]                 = useState<string | null>(null);
+
+  // Recipe extraction state
+  const [recipeOpen, setRecipeOpen]       = useState(false);
+  const [recipeText, setRecipeText]       = useState('');
+  const [extracting, setExtracting]       = useState(false);
+  const [extracted, setExtracted]         = useState<ExtractedIngredient[] | null>(null);
+  const [selectedIdxs, setSelectedIdxs]   = useState<Set<number>>(new Set());
+  const [addingAll, setAddingAll]         = useState(false);
 
   function setMode(mode: GroupMode) {
     setGroupMode(mode);
@@ -362,6 +377,52 @@ export default function GroceryPage() {
       },
     });
     setEditingItem(null);
+  }
+
+  async function handleExtractRecipe() {
+    if (!recipeText.trim()) return;
+    setExtracting(true);
+    setExtracted(null);
+    try {
+      const res = await fetch('/api/ai/grocery-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeText }),
+      });
+      const data = await res.json() as { ingredients?: ExtractedIngredient[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      const ingredients = data.ingredients ?? [];
+      setExtracted(ingredients);
+      setSelectedIdxs(new Set(ingredients.map((_, i) => i)));
+    } catch (err) {
+      setToast(`Extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleAddExtracted() {
+    if (!extracted) return;
+    setAddingAll(true);
+    const toAdd = extracted.filter((_, i) => selectedIdxs.has(i));
+    await Promise.all(toAdd.map(item =>
+      fetch('/api/grocery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:     item.name,
+          quantity: item.quantity,
+          unit:     item.unit || null,
+          category: item.category || null,
+        }),
+      }),
+    ));
+    invalidate();
+    setAddingAll(false);
+    setRecipeOpen(false);
+    setRecipeText('');
+    setExtracted(null);
+    setToast(`Added ${toAdd.length} ingredient${toAdd.length !== 1 ? 's' : ''} to list!`);
   }
 
   function handleExport() {
@@ -475,19 +536,128 @@ export default function GroceryPage() {
         )}
       </div>
 
-      {/* Export FAB */}
-      {items.length > 0 && (
+      {/* FAB row — sits to the left of the global QuickCapture FAB (w-12 + right-4 = ~64px) */}
+      <div className="fixed bottom-20 right-20 md:bottom-6 md:right-20 flex items-center gap-2 z-40">
         <button
-          onClick={handleExport}
-          className="fixed bottom-20 right-4 md:bottom-6 md:right-6 flex items-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-full shadow-lg transition-colors z-40"
+          onClick={() => { setRecipeOpen(true); setExtracted(null); setRecipeText(''); }}
+          className="flex items-center gap-2 px-4 py-3 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-full shadow-lg transition-colors"
         >
-          <Clipboard size={16} />
-          Export
+          <ChefHat size={16} />
+          Extract Recipe
         </button>
-      )}
+        {items.length > 0 && (
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-full shadow-lg transition-colors"
+          >
+            <Clipboard size={16} />
+            Export
+          </button>
+        )}
+      </div>
 
       {/* Toast */}
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
+
+      {/* Recipe Modal */}
+      {recipeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+              <div className="flex items-center gap-2 font-semibold">
+                <ChefHat size={16} className="text-indigo-400" />
+                Extract from Recipe
+              </div>
+              <button onClick={() => setRecipeOpen(false)} className="p-1 rounded text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors">
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {!extracted ? (
+                <>
+                  <p className="text-xs text-zinc-500">Paste a recipe and AI will extract the ingredients.</p>
+                  <textarea
+                    value={recipeText}
+                    onChange={e => setRecipeText(e.target.value)}
+                    placeholder="Paste recipe text here…"
+                    rows={10}
+                    className="w-full bg-zinc-800 text-white text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-1 focus:ring-indigo-500 placeholder-zinc-600 resize-none"
+                  />
+                  <button
+                    onClick={handleExtractRecipe}
+                    disabled={!recipeText.trim() || extracting}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm rounded-lg transition-colors"
+                  >
+                    {extracting
+                      ? <><Loader2 size={14} className="animate-spin" /> Extracting…</>
+                      : <><ChefHat size={14} /> Extract Ingredients</>
+                    }
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-zinc-500">
+                    {extracted.length} ingredient{extracted.length !== 1 ? 's' : ''} found. Select which to add:
+                  </p>
+                  <div className="space-y-1.5">
+                    {extracted.map((item, i) => {
+                      const checked = selectedIdxs.has(i);
+                      const catColor = CATEGORY_COLORS[item.category] ?? CATEGORY_COLORS.Other;
+                      return (
+                        <label key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedIdxs(prev => {
+                                const next = new Set(prev);
+                                if (checked) next.delete(i); else next.add(i);
+                                return next;
+                              });
+                            }}
+                            className="accent-indigo-500"
+                          />
+                          <span className="flex-1 text-sm text-white">
+                            {item.name}
+                            {(item.quantity || item.unit) && (
+                              <span className="text-zinc-500 ml-1.5 text-xs">
+                                {[item.quantity, item.unit].filter(Boolean).join(' ')}
+                              </span>
+                            )}
+                          </span>
+                          <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', catColor)}>
+                            {item.category}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => setExtracted(null)}
+                      className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleAddExtracted}
+                      disabled={selectedIdxs.size === 0 || addingAll}
+                      className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm rounded-lg transition-colors"
+                    >
+                      {addingAll
+                        ? <><Loader2 size={14} className="animate-spin" /> Adding…</>
+                        : `Add ${selectedIdxs.size} to List`
+                      }
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

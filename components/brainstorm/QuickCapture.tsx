@@ -41,7 +41,7 @@ export default function QuickCapture() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-5 md:bottom-6 z-40 w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center shadow-lg transition-colors"
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-4 z-40 w-12 h-12 rounded-full bg-indigo-600 hover:bg-indigo-500 flex items-center justify-center shadow-lg transition-colors"
         title="Quick Capture (Ctrl+Shift+B)"
       >
         <Zap size={20} />
